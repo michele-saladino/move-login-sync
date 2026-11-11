@@ -14,6 +14,12 @@ const granted = reactive<Record<string, boolean>>({})
 const manual = reactive<Record<string, string>>({})
 const open = reactive<Record<string, boolean>>({})
 
+// Embedded = floating over a page (see background/overlay.ts); otherwise a standalone window.
+const embedded = window.parent !== window
+const close = () => window.parent.postMessage({ type: 'mls-close' }, '*')
+const hashHost = new URLSearchParams(location.hash.slice(1)).get('host') ?? ''
+const cleanHost = (h: string) => normalizeHost(h.replace(/^www\./, ''))
+
 const say = (kind: 'ok' | 'error', text: string) => (status.value = { kind, text })
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -46,11 +52,20 @@ onMounted(async () => {
   log.value = l.slice().reverse()
   chrome.storage.onChanged.addListener(onStorage)
 
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (tab?.url && /^https?:/.test(tab.url)) currentHost.value = normalizeHost(new URL(tab.url).hostname.replace(/^www\./, ''))
-  } catch {
-    /* no active tab */
+  if (!embedded) document.documentElement.classList.add('standalone')
+  if (hashHost) currentHost.value = cleanHost(hashHost)
+  else {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      if (tab?.url && /^https?:/.test(tab.url)) currentHost.value = cleanHost(new URL(tab.url).hostname)
+    } catch {
+      /* no active tab */
+    }
+  }
+  if (embedded) {
+    // Let the overlay size the iframe to its content.
+    new ResizeObserver(() => window.parent.postMessage({ type: 'mls-height', height: document.body.offsetHeight }, '*')).observe(document.body)
+    window.addEventListener('keydown', (e) => e.key === 'Escape' && close())
   }
   await refreshGranted()
 })
@@ -140,7 +155,10 @@ const hasGroups = computed(() => cfg.groups.length > 0)
   <main>
     <header>
       <h1>Move Login Sync</h1>
-      <button class="primary" @click="createGroup">+ New group</button>
+      <div class="h-actions">
+        <button class="primary" @click="createGroup">+ New group</button>
+        <button v-if="embedded" class="icon" title="Close (Esc)" @click="close">✕</button>
+      </div>
     </header>
 
     <p v-if="loaded && !hasGroups" class="empty">
@@ -205,53 +223,97 @@ const hasGroups = computed(() => cfg.groups.length > 0)
 </template>
 
 <style>
+/* Minimal: neutral greys on a clear background, flat hairline borders, one quiet accent. */
 :root {
-  color-scheme: light dark;
-  --bg: #fff; --fg: #1d2330; --muted: #6a7385; --line: #d9dde6; --accent: #3b5bdb; --err: #c92a2a; --ok: #2b8a3e; --card: #f6f7fa; --warn: #e8590c;
+  color-scheme: dark light;
+  --fg: rgba(255, 255, 255, .92); --muted: rgba(255, 255, 255, .5);
+  --layer: rgba(255, 255, 255, .06); --layer-hi: rgba(255, 255, 255, .12);
+  --edge: rgba(255, 255, 255, .14); --field: rgba(0, 0, 0, .18);
+  --accent: rgba(255, 255, 255, .92); --on-accent: #111; --fallback: #1b1b1d;
+  --err: #e08a8a; --ok: #8ccaa0; --warn: #d9b27a; --star: #e6c36a;
 }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #14171f; --fg: #e6e9f0; --muted: #9099ad; --line: #2b3140; --accent: #7c93f5; --err: #ff8787; --ok: #69db7c; --card: #1c212c; --warn: #ffa94d; }
+@media (prefers-color-scheme: light) {
+  :root {
+    --fg: rgba(0, 0, 0, .86); --muted: rgba(0, 0, 0, .5);
+    --layer: rgba(255, 255, 255, .32); --layer-hi: rgba(255, 255, 255, .55);
+    --edge: rgba(0, 0, 0, .12); --field: rgba(255, 255, 255, .4);
+    --accent: rgba(0, 0, 0, .85); --on-accent: #fff; --fallback: #f4f4f5;
+    --err: #b54545; --ok: #3f8a5c; --warn: #9a6b1f; --star: #b98600;
+  }
 }
-body { margin: 0; width: 400px; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, sans-serif; }
-main { padding: 12px; max-height: 560px; overflow-y: auto; box-sizing: border-box; }
-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-h1 { font-size: 15px; margin: 0; }
-button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
-button:disabled { opacity: .4; cursor: not-allowed; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.full { width: 100%; margin-bottom: 6px; }
-button.icon { padding: 2px 6px; background: none; border-color: transparent; }
-button.icon:hover:not(:disabled) { border-color: var(--line); }
-button.danger:hover { color: var(--err); }
-button.warn { color: var(--warn); border-color: var(--warn); padding: 1px 6px; font-size: 11px; }
-button.link { background: none; border: none; padding: 4px 0 0; color: var(--muted); }
-input:not([type='checkbox']) { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); width: 100%; box-sizing: border-box; }
-input:disabled { opacity: .5; }
-.group { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
-.group.off .domains, .group.off .add { opacity: .55; }
-.g-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
-.name { font-weight: 600; background: transparent !important; border-color: transparent !important; }
-.name:focus { border-color: var(--line) !important; }
-.mode { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
-.star.on { color: #f59f00; }
+* { box-sizing: border-box; }
+html, body { background: transparent; }
+.standalone body { background: var(--fallback); }
+body { margin: 0; color: var(--fg); font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+main { padding: 14px; }
+html { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
+
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.h-actions { display: flex; gap: 4px; align-items: center; }
+h1 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+
+.group, .status, .activity {
+  position: relative; margin: 0 0 10px; padding: 10px; border-radius: 12px;
+  background: var(--layer); border: 1px solid var(--edge);
+}
+.group.off { opacity: .65; }
+.status { padding: 8px 10px; font-size: 12px; }
+.status.ok { color: var(--ok); } .status.error { color: var(--err); }
+
+button {
+  font: inherit; padding: 5px 11px; border-radius: 8px; color: var(--fg); cursor: pointer;
+  background: transparent; border: 1px solid var(--edge); transition: background .12s;
+}
+button:hover:not(:disabled) { background: var(--layer-hi); }
+button:disabled { opacity: .35; cursor: not-allowed; }
+button:focus-visible, input:focus-visible { outline: 1px solid var(--fg); outline-offset: 1px; }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 500; }
+button.primary:hover:not(:disabled) { background: var(--accent); opacity: .85; }
+button.full { width: 100%; margin-bottom: 8px; color: var(--muted); border-style: dashed; }
+button.full:hover:not(:disabled) { color: var(--fg); }
+button.icon { padding: 2px 6px; border-color: transparent; color: var(--muted); }
+button.icon:hover:not(:disabled) { color: var(--fg); background: var(--layer-hi); }
+button.danger:hover:not(:disabled) { color: var(--err); }
+button.warn { color: var(--warn); border-color: var(--warn); padding: 0 7px; font-size: 11px; }
+button.link { background: none; border: none; padding: 6px 0 0; color: var(--muted); font-size: 12px; }
+button.link:hover { background: none; color: var(--fg); }
+.star { font-size: 14px; }
+.star.on { color: var(--star); }
+
+input:not([type='checkbox']) {
+  font: inherit; padding: 6px 9px; width: 100%; color: var(--fg); border-radius: 8px;
+  background: var(--field); border: 1px solid var(--edge);
+}
+input::placeholder { color: var(--muted); }
+input:disabled { opacity: .4; }
+.name { font-weight: 600; background: transparent !important; border-color: transparent !important; padding-left: 4px !important; }
+.name:hover, .name:focus { border-color: var(--edge) !important; }
+
+.g-head { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+.mode { margin: 0 0 8px; padding: 0 4px; font-size: 12px; color: var(--muted); }
+.mode b { color: var(--fg); font-weight: 500; }
 .domains { list-style: none; margin: 0 0 8px; padding: 0; }
-.domains li { display: flex; align-items: center; gap: 4px; padding: 3px 0; border-bottom: 1px solid var(--line); }
-.domains li:last-child { border-bottom: none; }
-.host { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: 12px; }
+.domains li { display: flex; align-items: center; gap: 2px; padding: 3px 0; border-top: 1px solid var(--edge); }
+.domains li:first-child { border-top: none; }
+.host { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px ui-monospace, 'SF Mono', monospace; }
 .add { display: flex; gap: 6px; }
+.add input { flex: 1; }
 .opts { display: grid; gap: 6px; margin-top: 6px; }
 .check { display: flex; gap: 6px; align-items: center; }
-.empty, .hint { color: var(--muted); font-size: 12px; margin: 6px 0; }
-.status { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); margin: 0 0 8px; }
-.status.ok { color: var(--ok); } .status.error { color: var(--err); }
+.check input { accent-color: currentColor; }
+.empty, .hint { color: var(--muted); font-size: 12px; margin: 6px 4px; }
+.domains .hint { margin: 2px 4px; }
+
+.activity { padding: 8px 10px; }
 .activity summary { cursor: pointer; color: var(--muted); font-size: 12px; }
-.activity ul { list-style: none; margin: 6px 0; padding: 0; max-height: 120px; overflow: auto; font: 11px/1.6 ui-monospace, monospace; }
+.activity ul { list-style: none; margin: 6px 0 0; padding: 0; max-height: 120px; overflow: auto; font: 11px/1.6 ui-monospace, monospace; }
 .activity li.error { color: var(--err); }
 .activity time { color: var(--muted); margin-right: 4px; }
-.switch { position: relative; width: 34px; height: 18px; flex: none; }
+
+.switch { position: relative; width: 30px; height: 18px; flex: none; }
 .switch input { opacity: 0; width: 100%; height: 100%; position: absolute; margin: 0; cursor: pointer; z-index: 1; }
-.slider { position: absolute; inset: 0; background: var(--line); border-radius: 9px; transition: background .15s; }
-.slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: transform .15s; }
-.switch input:checked + .slider { background: var(--accent); }
-.switch input:checked + .slider::before { transform: translateX(16px); }
+.slider { position: absolute; inset: 0; border-radius: 9px; background: var(--layer-hi); border: 1px solid var(--edge); transition: background .15s; }
+.slider::before { content: ''; position: absolute; width: 12px; height: 12px; left: 2px; top: 2px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+.switch input:checked + .slider { background: var(--accent); border-color: transparent; }
+.switch input:checked + .slider::before { background: var(--on-accent); transform: translateX(12px); }
 </style>

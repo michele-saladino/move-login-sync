@@ -2,7 +2,7 @@
 
 A Chrome extension (Manifest V3) that keeps **cookies** and **localStorage** aligned across a **group of domains**, so logging in on one site logs you in on the others.
 
-Core logic is TypeScript (`src/core`, `src/background`, `src/content`); the popup UI is Vue 3 (`src/popup`).
+Core logic is TypeScript (`src/core`, `src/background`, `src/content`); the menu UI is Vue 3 (`src/popup`).
 
 > ⚠️ Syncing cookies shares logged-in sessions between sites. Only use it with sites you control or trust.
 
@@ -21,11 +21,11 @@ Load it in Chrome:
 
 1. Open `chrome://extensions` and enable **Developer mode**.
 2. Click **Load unpacked** and select the `dist/` folder.
-3. Pin the extension and click its icon to open the menu.
+3. Pin the extension and click its icon: the menu floats over the current page as a transparent, blurred glass panel (Esc, ✕, clicking the page or the icon again closes it).
 
 ## Usage
 
-Click the icon to open the popup.
+Click the icon to open the menu. On pages Chrome doesn't let extensions touch (`chrome://…`, the Web Store) it opens the same UI in a small window instead.
 
 1. **+ New group** creates a group (rename it by clicking its name).
 2. Inside the group:
@@ -65,9 +65,17 @@ localStorage belongs to a single origin and can only be read from a page, so:
 - When a tab loads it sends its full state and receives whatever it is missing, so a tab opened later catches up even if no other tab of the group is open.
 - Writes made by the extension are not reported back and unchanged values are dropped, so there are no echo loops.
 
+### The overlay menu (`src/background/overlay.ts`)
+
+A browser-action popup can't be transparent, so the icon injects (via `activeTab`) an `<iframe>` of `popup.html` floating over the page. The blur and tint are applied to the iframe *element* — `backdrop-filter` inside an iframe cannot see the page behind it — and the iframe document itself is transparent. The iframe reports its content height so the panel fits it.
+
 ### Permissions
 
-`cookies`, `storage`, `scripting`, `activeTab` (to read the current tab's URL), plus **optional** host permissions requested per domain when you add it. If Chrome closes the popup while showing its permission prompt, the background worker notices the grant and starts syncing anyway.
+`cookies`, `storage`, `scripting`, `activeTab` (to inject the overlay into the tab you clicked on), plus **optional** host permissions requested per domain when you add it. If Chrome closes the popup while showing its permission prompt, the background worker notices the grant and starts syncing anyway.
+
+## Security note
+
+`popup.html` has to be web-accessible so it can be shown over pages, which means a hostile page could embed it and try to trick you into clicking. Adding a domain to a group does nothing until Chrome's own permission prompt for that domain is accepted — read that prompt, and never allow a domain you don't recognise.
 
 ## Limitations
 
@@ -80,8 +88,9 @@ localStorage belongs to a single origin and can only be read from a page, so:
 
 ```
 public/manifest.json         extension manifest
-popup.html, src/popup/       Vue popup UI (groups, domains, options)
-src/background/index.ts      service worker: message routing, content-script registration
+popup.html, src/popup/       Vue menu UI (groups, domains, options)
+src/background/index.ts      service worker: message routing, content-script registration, icon click
+src/background/overlay.ts    injected function that floats the menu over the page
 src/content/index.ts         localStorage watcher/applier (built as a standalone IIFE)
 src/core/                    types, matching helpers, cookie + localStorage sync, config/log
 vite.config.ts               builds popup + background

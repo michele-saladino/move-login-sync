@@ -3,11 +3,30 @@ import { copyAllCookies, setupCookieSync } from '../core/cookies'
 import { findGroup, isGroupActive, originPattern } from '../core/match'
 import { applyChanges, copyAllStorage, handleHello, pruneShared } from '../core/storageSync'
 import type { ContentToBg, UiToBg } from '../core/types'
+import { toggleOverlay } from './overlay'
 
 const CONTENT_SCRIPT_ID = 'move-login-sync-content'
 
 // Listeners must be registered synchronously at top level so the service worker wakes for them.
 setupCookieSync()
+
+// Click on the icon: float the menu over the page. Pages that can't be scripted (chrome://, the Web
+// Store, …) get the same UI in a small standalone window instead.
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab.id != null && tab.url && /^https?:/.test(tab.url)) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: toggleOverlay,
+        args: [chrome.runtime.getURL('popup.html')],
+      })
+      return
+    } catch {
+      /* fall through */
+    }
+  }
+  await chrome.windows.create({ url: chrome.runtime.getURL('popup.html'), type: 'popup', width: 420, height: 640 })
+})
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.config) void applyConfig()

@@ -40,6 +40,15 @@ export function matchesFilter(filter: string, name: string): boolean {
 
 export const originPattern = (host: string) => `*://*.${host}/*`
 
+/** The starred domain of the group, if it is still a member. */
+export const primaryOf = (g: Group) => (g.primary && g.domains.includes(g.primary) ? g.primary : null)
+
+/** With a starred domain only that one is a source; without one every domain is. */
+export const canPropagateFrom = (g: Group, base: string) => {
+  const p = primaryOf(g)
+  return !p || p === base
+}
+
 export const isGroupActive = (g: Group) => g.enabled && g.domains.length >= 2
 
 /** The active group that owns `host` (a page host or a cookie domain) and which of its domains matched. */

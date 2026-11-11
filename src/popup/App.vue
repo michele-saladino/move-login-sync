@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { getConfig, saveConfig } from '../core/config'
-import { findConflict, normalizeHost, originPattern } from '../core/match'
+import { findConflict, normalizeHost, originPattern, primaryOf } from '../core/match'
 import { newGroup, type Group, type LogEntry, type SyncConfig } from '../core/types'
 
 const cfg = reactive<SyncConfig>({ groups: [] })
@@ -96,7 +96,16 @@ async function toggleEnabled(g: Group) {
 }
 
 function removeDomain(g: Group, d: string) {
+  if (g.primary === d) g.primary = null
   g.domains = g.domains.filter((x) => x !== d)
+}
+
+/** Star / unstar. Starring makes the domain the source of truth and mirrors it to the others right away. */
+async function toggleStar(g: Group, d: string) {
+  g.primary = g.primary === d ? null : d
+  window.clearTimeout(timer)
+  await saveConfig(JSON.parse(JSON.stringify(cfg))) // the background needs the new mode before it copies
+  if (g.primary && g.enabled && g.domains.length > 1) await copyFrom(g, d)
 }
 
 async function copyFrom(g: Group, from: string) {
@@ -148,8 +157,14 @@ const hasGroups = computed(() => cfg.groups.length > 0)
         <button class="icon danger" title="Delete group" @click="deleteGroup(g)">🗑</button>
       </div>
 
+      <p class="mode">
+        <template v-if="primaryOf(g)">★ <b>{{ primaryOf(g) }}</b> mirrors to the other sites; they don't write back.</template>
+        <template v-else>All sites stay aligned both ways. Star one to make it the source.</template>
+      </p>
+
       <ul class="domains">
         <li v-for="d in g.domains" :key="d">
+          <button class="icon star" :class="{ on: primaryOf(g) === d }" :disabled="busy" :title="primaryOf(g) === d ? 'Source of truth — click to unstar' : 'Star: mirror this site to all the others'" @click="toggleStar(g, d)">{{ primaryOf(g) === d ? '★' : '☆' }}</button>
           <span class="host">{{ d }}</span>
           <button v-if="granted[d] === false" class="warn" title="Chrome access is needed to sync this site" @click="requestAccess([d])">
             Grant access
@@ -217,6 +232,8 @@ input:disabled { opacity: .5; }
 .g-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 .name { font-weight: 600; background: transparent !important; border-color: transparent !important; }
 .name:focus { border-color: var(--line) !important; }
+.mode { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+.star.on { color: #f59f00; }
 .domains { list-style: none; margin: 0 0 8px; padding: 0; }
 .domains li { display: flex; align-items: center; gap: 4px; padding: 3px 0; border-bottom: 1px solid var(--line); }
 .domains li:last-child { border-bottom: none; }

@@ -1,5 +1,5 @@
 import { log } from './config'
-import { matchesFilter, originPattern } from './match'
+import { canPropagateFrom, matchesFilter, originPattern } from './match'
 import type { BgToContent, Group, LsChange } from './types'
 
 /**
@@ -53,10 +53,12 @@ export function applyChanges(
   group: Group,
   base: string,
   changes: LsChange[],
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; replace?: boolean } = {},
 ): Promise<number> {
   return exclusive(async () => {
-    const shared = await readShared(group.id)
+    if (!opts.force && !canPropagateFrom(group, base)) return 0 // only the starred domain is a source
+    // `replace`: the sender becomes the single source of truth, forget anything it does not have.
+    const shared = opts.replace ? {} : await readShared(group.id)
     const relevant = changes.filter((c) => matchesFilter(group.storageFilter, c.key))
     const applied: LsChange[] = []
     for (const ch of relevant) {
@@ -65,7 +67,7 @@ export function applyChanges(
       shared[ch.key] = { v: ch.value, t: Date.now() }
       applied.push(ch)
     }
-    if (applied.length) {
+    if (applied.length || opts.replace) {
       await writeShared(group.id, shared)
       log('info', `localStorage: ${applied.length} change(s) from ${base}`)
     }
@@ -77,6 +79,7 @@ export function applyChanges(
 /** A freshly loaded page reports its full state and gets back whatever it is missing. */
 export function handleHello(group: Group, base: string, snapshot: Record<string, string>): Promise<LsChange[]> {
   return exclusive(async () => {
+    const canPush = canPropagateFrom(group, base)
     const shared = await readShared(group.id)
     const out: LsChange[] = []
     const pushed: LsChange[] = []
@@ -86,7 +89,7 @@ export function handleHello(group: Group, base: string, snapshot: Record<string,
       const e = shared[key]
       if (e && e.v === value) continue
       if (e) out.push({ key, value: e.v }) // remembered state wins
-      else {
+      else if (canPush) {
         shared[key] = { v: value, t: Date.now() }
         pushed.push({ key, value })
       }
@@ -112,7 +115,7 @@ export async function copyAllStorage(group: Group, from: string): Promise<number
         snapshot: Record<string, string>
       }
       const changes = Object.entries(res.snapshot).map(([key, value]) => ({ key, value }))
-      await applyChanges(group, from, changes, { force: true })
+      await applyChanges(group, from, changes, { force: true, replace: group.primary === from })
       return changes.filter((c) => matchesFilter(group.storageFilter, c.key)).length
     } catch {
       /* tab has no content script yet, try the next one */

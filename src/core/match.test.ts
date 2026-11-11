@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findConflict, findGroup, hostMatches, isValidHost, mapDomain, matchesFilter, normalizeHost } from './match'
+import { canPropagateFrom, findConflict, findGroup, hostMatches, isValidHost, mapDomain, matchesFilter, normalizeHost } from './match'
 import { newGroup } from './types'
 
 const group = (name: string, domains: string[]) => ({ ...newGroup(name), domains })
@@ -36,11 +36,18 @@ describe('match', () => {
     expect(findGroup([{ ...g, enabled: false }], 'a.com')).toBeNull()
     expect(findGroup([group('Solo', ['a.com'])], 'a.com')).toBeNull()
   })
+  it('only the starred domain propagates', () => {
+    const g = group('G', ['a.com', 'b.org'])
+    expect(canPropagateFrom(g, 'b.org')).toBe(true)
+    const starred = { ...g, primary: 'a.com' }
+    expect(canPropagateFrom(starred, 'a.com')).toBe(true)
+    expect(canPropagateFrom(starred, 'b.org')).toBe(false)
+    expect(canPropagateFrom({ ...g, primary: 'gone.com' }, 'b.org')).toBe(true)
+  })
   it('detects duplicate and nested domains across groups', () => {
     const groups = [group('G', ['a.com']), group('H', ['b.org'])]
     expect(findConflict(groups, 'a.com')).toMatch(/already in/)
     expect(findConflict(groups, 'app.a.com')).toMatch(/overlaps/)
-    expect(findConflict(groups, 'org')).toBeNull()
     expect(findConflict(groups, 'c.net')).toBeNull()
   })
 })

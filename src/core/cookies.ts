@@ -1,5 +1,5 @@
 import { getConfig, log } from './config'
-import { findGroup, hostMatches, mapDomain, matchesFilter } from './match'
+import { canPropagateFrom, findGroup, hostMatches, mapDomain, matchesFilter } from './match'
 import type { Group } from './types'
 
 type Cookie = chrome.cookies.Cookie
@@ -59,7 +59,7 @@ export function setupCookieSync(): void {
   chrome.cookies.onChanged.addListener(async ({ cookie, removed, cause }) => {
     try {
       const hit = findGroup((await getConfig()).groups, cookie.domain)
-      if (!hit || !hit.group.syncCookies || !matchesFilter(hit.group.cookieFilter, cookie.name)) return
+      if (!hit || !canPropagateFrom(hit.group, hit.base) || !hit.group.syncCookies || !matchesFilter(hit.group.cookieFilter, cookie.name)) return
       // "overwrite" is the delete half of an update; the set event follows. Only mirror real deletions.
       if (removed && cause !== 'explicit') return
 

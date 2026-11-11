@@ -4,6 +4,8 @@ export interface Group {
   name: string
   enabled: boolean
   domains: string[]
+  /** When set, this domain is the source of truth: it mirrors to the others and they never write back. */
+  primary: string | null
   syncCookies: boolean
   syncLocalStorage: boolean
   /** Comma separated wildcard patterns (e.g. "session*, token"). Empty = everything. */
@@ -23,6 +25,7 @@ export function newGroup(name: string): Group {
     name,
     enabled: true,
     domains: [],
+    primary: null,
     syncCookies: true,
     syncLocalStorage: true,
     cookieFilter: '',

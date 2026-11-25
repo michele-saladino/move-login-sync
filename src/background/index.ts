@@ -10,7 +10,8 @@ const CONTENT_SCRIPT_ID = 'move-login-sync-content'
 // Listeners must be registered synchronously at top level so the service worker wakes for them.
 setupCookieSync()
 
-// Click on the icon: float the menu over the page. Pages that can't be scripted (chrome://, the Web
+// Click on the icon (Chrome only: the Firefox build has a regular default_popup, which suppresses this
+// event): float the menu over the page. Pages that can't be scripted (chrome://, the Web
 // Store, …) get the same UI in a small standalone window instead.
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id != null && tab.url && /^https?:/.test(tab.url)) {

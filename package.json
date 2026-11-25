@@ -1,10 +1,16 @@
 {
   "name": "move-login-sync",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "",
   "scripts": {
-    "dev": "npm run build -- --watch",
-    "build": "vue-tsc --noEmit && vite build && vite build --config vite.content.config.ts",
+    "dev": "pnpm build:chrome --watch",
+    "dev:firefox": "pnpm build:firefox --watch",
+    "build": "vue-tsc --noEmit && pnpm build:chrome && pnpm build:firefox",
+    "build:chrome": "vite build --mode chrome && vite build --mode chrome --config vite.content.config.ts",
+    "build:firefox": "vite build --mode firefox && vite build --mode firefox --config vite.content.config.ts",
+    "start:firefox": "web-ext run --source-dir dist/firefox",
+    "lint:firefox": "web-ext lint --source-dir dist/firefox",
+    "package:firefox": "web-ext build --source-dir dist/firefox --artifacts-dir dist --overwrite-dest",
     "test": "vitest run"
   },
   "keywords": [],
@@ -21,7 +27,8 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.8",
     "vitest": "^5.1.0",
-    "vue-tsc": "^3.3.14"
+    "vue-tsc": "^3.3.14",
+    "web-ext": "10.8.0"
   },
   "private": true
 }

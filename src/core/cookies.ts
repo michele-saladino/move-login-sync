@@ -58,6 +58,9 @@ export async function mirrorRemoval(c: Cookie, from: string, to: string): Promis
 export function setupCookieSync(): void {
   chrome.cookies.onChanged.addListener(async ({ cookie, removed, cause }) => {
     try {
+      // Partitioned cookies belong to a third-party frame on some other site (Firefox partitions every
+      // third-party cookie by default). Mirroring them as normal cookies would clobber real sessions.
+      if (cookie.partitionKey) return
       const hit = findGroup((await getConfig()).groups, cookie.domain)
       if (!hit || !canPropagateFrom(hit.group, hit.base) || !hit.group.syncCookies || !matchesFilter(hit.group.cookieFilter, cookie.name)) return
       // "overwrite" is the delete half of an update; the set event follows. Only mirror real deletions.

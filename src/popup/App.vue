@@ -84,7 +84,7 @@ function deleteGroup(g: Group) {
 
 async function requestAccess(domains: string[]): Promise<boolean> {
   try {
-    // If Chrome closes the popup for its prompt, the background still picks the grant up.
+    // If the browser closes the menu for its prompt, the background still picks the grant up.
     const ok = await chrome.permissions.request({ origins: domains.map(originPattern) })
     await refreshGranted()
     return ok
@@ -184,7 +184,7 @@ const hasGroups = computed(() => cfg.groups.length > 0)
         <li v-for="d in g.domains" :key="d">
           <button class="icon star" :class="{ on: primaryOf(g) === d }" :disabled="busy" :title="primaryOf(g) === d ? 'Source of truth — click to unstar' : 'Star: mirror this site to all the others'" @click="toggleStar(g, d)">{{ primaryOf(g) === d ? '★' : '☆' }}</button>
           <span class="host">{{ d }}</span>
-          <button v-if="granted[d] === false" class="warn" title="Chrome access is needed to sync this site" @click="requestAccess([d])">
+          <button v-if="granted[d] === false" class="warn" title="Browser access is needed to sync this site" @click="requestAccess([d])">
             Grant access
           </button>
           <button class="icon" :disabled="busy || g.domains.length < 2 || !g.enabled" title="Copy this site's cookies and localStorage to the other sites of the group" @click="copyFrom(g, d)">⇄</button>
@@ -243,7 +243,7 @@ const hasGroups = computed(() => cfg.groups.length > 0)
 }
 * { box-sizing: border-box; }
 html, body { background: transparent; }
-.standalone body { background: var(--fallback); }
+.standalone body { background: var(--fallback); min-width: 380px; } /* Firefox popups size to their content */
 body { margin: 0; color: var(--fg); font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; }
 main { padding: 14px; }
 html { scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }

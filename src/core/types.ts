@@ -19,9 +19,17 @@ export interface SyncConfig {
 
 export const DEFAULT_CONFIG: SyncConfig = { groups: [] }
 
+/**
+ * Random id. Not crypto.randomUUID(): it only exists in secure contexts, and Firefox treats the menu
+ * iframe as insecure when it floats over an http:// page.
+ */
+export function randomId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export function newGroup(name: string): Group {
   return {
-    id: crypto.randomUUID(),
+    id: randomId(),
     name,
     enabled: true,
     domains: [],
